@@ -83,14 +83,47 @@
                 saveButton.style.display = 'block';
 
                 saveButton.addEventListener('click', function () {
-                    if (!scene || !scene.components || !scene.components.screenshot) {
+                    if (!scene || !scene.renderer) {
                         showMessage('保存の準備がまだ完了していません');
                         return;
                     }
 
                     try {
-                        var canvas = scene.components.screenshot.getCanvas('perspective');
-                        canvas.toBlob(function (blob) {
+                        // カメラ映像を取得
+                        var video = document.querySelector('video');
+                        if (!video) {
+                            showMessage('カメラ映像が見つかりません');
+                            return;
+                        }
+
+                        // WebGLキャンバスを取得（AR.jsが使うrendererのcanvas）
+                        var glCanvas = scene.renderer.domElement;
+                        var w = glCanvas.width;
+                        var h = glCanvas.height;
+
+                        // 合成用の2Dキャンバスを作成
+                        var composite = document.createElement('canvas');
+                        composite.width = w;
+                        composite.height = h;
+                        var ctx = composite.getContext('2d');
+
+                        // ① カメラ映像を背景に描画（アスペクト比をcover的に合わせる）
+                        var vw = video.videoWidth;
+                        var vh = video.videoHeight;
+                        var scale = Math.max(w / vw, h / vh);
+                        var drawW = vw * scale;
+                        var drawH = vh * scale;
+                        var dx = (w - drawW) / 2;
+                        var dy = (h - drawH) / 2;
+                        ctx.drawImage(video, dx, dy, drawW, drawH);
+
+                        // ② WebGLキャンバス（3Dモデル）を上から重ねて描画
+                        // preserveDrawingBuffer が false の場合に備えて renderer.render を呼ぶ
+                        scene.renderer.render(scene.object3D, scene.camera);
+                        ctx.drawImage(glCanvas, 0, 0, w, h);
+
+                        // ③ 合成結果を保存
+                        composite.toBlob(function (blob) {
                             if (!blob) {
                                 showMessage('画像の保存に失敗しました');
                                 return;
