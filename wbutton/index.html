@@ -49,7 +49,7 @@
         <button id="saveButton" type="button">保存</button>
         <div id="saveMessage" aria-live="polite"></div>
 
-        <a-scene embedded arjs renderer="logarithmicDepthBuffer: true; colorManagement: true;">
+        <a-scene embedded arjs renderer="alpha: true; preserveDrawingBuffer: true; logarithmicDepthBuffer: true; colorManagement: true;">
             <a-marker type="pattern" url="../pattern-marker.patt">
                 <a-entity
                     position="0 -1 0"
@@ -62,10 +62,37 @@
 
         <script>
             (function () {
-                var isAndroidChrome = /Android/i.test(navigator.userAgent) && /Chrome/i.test(navigator.userAgent);
+                var isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
                 var saveButton = document.getElementById('saveButton');
                 var saveMessage = document.getElementById('saveMessage');
                 var scene = document.querySelector('a-scene');
+
+                function getActiveVideo() {
+                    var videos = document.querySelectorAll('video');
+                    for (var i = 0; i < videos.length; i += 1) {
+                        var video = videos[i];
+                        if (video.readyState >= 2 && video.videoWidth > 0 && video.videoHeight > 0) {
+                            return video;
+                        }
+                    }
+                    return null;
+                }
+
+                function downloadBlob(blob) {
+                    var fileName = 'ar-capture-' + Date.now() + '.png';
+                    var blobUrl = URL.createObjectURL(blob);
+                    var link = document.createElement('a');
+
+                    link.href = blobUrl;
+                    link.download = fileName;
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+
+                    window.setTimeout(function () {
+                        URL.revokeObjectURL(blobUrl);
+                    }, 1000);
+                }
 
                 function showMessage(message) {
                     saveMessage.textContent = message;
@@ -76,38 +103,47 @@
                     }, 2500);
                 }
 
-                if (!isAndroidChrome) {
+                if (!isMobile) {
                     return;
                 }
 
                 saveButton.style.display = 'block';
 
                 saveButton.addEventListener('click', function () {
-                    if (!scene || !scene.renderer) {
+                    if (!scene || !scene.renderer || !scene.camera) {
                         showMessage('保存の準備がまだ完了していません');
                         return;
                     }
 
                     try {
-                        // カメラ映像を取得
-                        var video = document.querySelector('video');
+                        // AR.jsが生成したカメラvideo要素を取得
+                        var video = getActiveVideo();
                         if (!video) {
-                            showMessage('カメラ映像が見つかりません');
+                            showMessage('カメラ映像の準備がまだ完了していません');
                             return;
                         }
 
-                        // WebGLキャンバスを取得（AR.jsが使うrendererのcanvas）
+                        // WebGLキャンバスを取得（3Dモデル描画レイヤー）
                         var glCanvas = scene.renderer.domElement;
+                        if (!glCanvas || glCanvas.width === 0 || glCanvas.height === 0) {
+                            showMessage('3D描画の準備がまだ完了していません');
+                            return;
+                        }
+
                         var w = glCanvas.width;
                         var h = glCanvas.height;
 
-                        // 合成用の2Dキャンバスを作成
+                        // 合成用の2Dキャンバス
                         var composite = document.createElement('canvas');
                         composite.width = w;
                         composite.height = h;
                         var ctx = composite.getContext('2d');
+                        if (!ctx) {
+                            showMessage('画像の保存に失敗しました');
+                            return;
+                        }
 
-                        // ① カメラ映像を背景に描画（アスペクト比をcover的に合わせる）
+                        // 1) カメラ映像を背景に描画（表示と同じcover挙動に合わせる）
                         var vw = video.videoWidth;
                         var vh = video.videoHeight;
                         var scale = Math.max(w / vw, h / vh);
@@ -117,32 +153,19 @@
                         var dy = (h - drawH) / 2;
                         ctx.drawImage(video, dx, dy, drawW, drawH);
 
-                        // ② WebGLキャンバス（3Dモデル）を上から重ねて描画
-                        // preserveDrawingBuffer が false の場合に備えて renderer.render を呼ぶ
+                        // 2) 3Dモデルレイヤーを上から重ねる
+                        // 保存直前に1フレーム描画し、最新状態を確実に取得する
                         scene.renderer.render(scene.object3D, scene.camera);
                         ctx.drawImage(glCanvas, 0, 0, w, h);
 
-                        // ③ 合成結果を保存
+                        // 3) 合成結果を保存
                         composite.toBlob(function (blob) {
                             if (!blob) {
                                 showMessage('画像の保存に失敗しました');
                                 return;
                             }
 
-                            var fileName = 'ar-capture-' + Date.now() + '.png';
-                            var blobUrl = URL.createObjectURL(blob);
-                            var link = document.createElement('a');
-
-                            link.href = blobUrl;
-                            link.download = fileName;
-                            document.body.appendChild(link);
-                            link.click();
-                            link.remove();
-
-                            window.setTimeout(function () {
-                                URL.revokeObjectURL(blobUrl);
-                            }, 1000);
-
+                            downloadBlob(blob);
                             showMessage('画像を保存しました');
                         }, 'image/png');
                     } catch (error) {
