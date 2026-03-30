@@ -1,19 +1,122 @@
 <!DOCTYPE html>
-<html>
-   <script src="https://aframe.io/releases/1.0.0/aframe.min.js"></script>
-   <!-- we import arjs version without NFT but with marker + location based support -->
-   <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
-   <body style="margin : 0px; overflow: hidden;">
-       <a-scene embedded arjs>
-       <a-marker type="pattern" url="../pattern-marker.patt">
-       <!-- we use cors proxy to avoid cross-origin problems ATTENTION! you need to set up your server -->
-           <a-entity
-           position="0 -1 0"
-           scale="1 1 1"
-           gltf-model="https://ivy-kat.github.io/ARtest1/AMNGS.glb"
-           ></a-entity>
-       </a-marker>
-       <a-entity camera></a-entity>
-       </a-scene>
-   </body>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+        <script src="https://aframe.io/releases/1.0.0/aframe.min.js"></script>
+        <!-- we import arjs version without NFT but with marker + location based support -->
+        <script src="https://raw.githack.com/AR-js-org/AR.js/master/aframe/build/aframe-ar.js"></script>
+        <style>
+            body {
+                margin: 0;
+                overflow: hidden;
+                font-family: sans-serif;
+            }
+
+            #saveButton {
+                position: fixed;
+                right: 16px;
+                bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+                z-index: 20;
+                display: none;
+                padding: 12px 18px;
+                border: 0;
+                border-radius: 999px;
+                background: rgba(0, 0, 0, 0.75);
+                color: #fff;
+                font-size: 16px;
+                font-weight: 700;
+                box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+            }
+
+            #saveMessage {
+                position: fixed;
+                left: 16px;
+                right: 16px;
+                bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+                z-index: 20;
+                display: none;
+                padding: 10px 12px;
+                border-radius: 12px;
+                background: rgba(0, 0, 0, 0.75);
+                color: #fff;
+                font-size: 14px;
+                text-align: center;
+            }
+        </style>
+    </head>
+    <body>
+        <button id="saveButton" type="button">保存</button>
+        <div id="saveMessage" aria-live="polite"></div>
+
+        <a-scene embedded arjs renderer="logarithmicDepthBuffer: true; colorManagement: true;">
+            <a-marker type="pattern" url="../pattern-marker.patt">
+                <a-entity
+                    position="0 -1 0"
+                    scale="1 1 1"
+                    gltf-model="https://ivy-kat.github.io/ARtest1/AMNGS.glb"
+                ></a-entity>
+            </a-marker>
+            <a-entity camera></a-entity>
+        </a-scene>
+
+        <script>
+            (function () {
+                var isAndroidChrome = /Android/i.test(navigator.userAgent) && /Chrome/i.test(navigator.userAgent);
+                var saveButton = document.getElementById('saveButton');
+                var saveMessage = document.getElementById('saveMessage');
+                var scene = document.querySelector('a-scene');
+
+                function showMessage(message) {
+                    saveMessage.textContent = message;
+                    saveMessage.style.display = 'block';
+                    window.clearTimeout(showMessage.timerId);
+                    showMessage.timerId = window.setTimeout(function () {
+                        saveMessage.style.display = 'none';
+                    }, 2500);
+                }
+
+                if (!isAndroidChrome) {
+                    return;
+                }
+
+                saveButton.style.display = 'block';
+
+                saveButton.addEventListener('click', function () {
+                    if (!scene || !scene.components || !scene.components.screenshot) {
+                        showMessage('保存の準備がまだ完了していません');
+                        return;
+                    }
+
+                    try {
+                        var canvas = scene.components.screenshot.getCanvas('perspective');
+                        canvas.toBlob(function (blob) {
+                            if (!blob) {
+                                showMessage('画像の保存に失敗しました');
+                                return;
+                            }
+
+                            var fileName = 'ar-capture-' + Date.now() + '.png';
+                            var blobUrl = URL.createObjectURL(blob);
+                            var link = document.createElement('a');
+
+                            link.href = blobUrl;
+                            link.download = fileName;
+                            document.body.appendChild(link);
+                            link.click();
+                            link.remove();
+
+                            window.setTimeout(function () {
+                                URL.revokeObjectURL(blobUrl);
+                            }, 1000);
+
+                            showMessage('画像を保存しました');
+                        }, 'image/png');
+                    } catch (error) {
+                        showMessage('画像の保存に失敗しました');
+                    }
+                });
+            }());
+        </script>
+    </body>
 </html>
